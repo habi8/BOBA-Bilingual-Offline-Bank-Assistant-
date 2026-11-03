@@ -280,4 +280,4 @@ if __name__ == "__main__":
     assistant = BankAssistant(
         model=args.model, threshold=args.threshold, banglish_rewrite=args.banglish_rewrite
     )
-    print(json.dumps(assistant.ask(args.question), ensure_ascii=False, indent=2))
+    print(assistant.ask(args.question)["answer"])
