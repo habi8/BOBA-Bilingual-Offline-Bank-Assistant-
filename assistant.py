@@ -8,7 +8,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import faiss
 import numpy as np
@@ -23,7 +23,7 @@ INDEX_PATH = INDEX_DIR / "faq.index"
 METADATA_PATH = INDEX_DIR / "faq-index.json"
 EMBEDDING_MODEL = "BAAI/bge-m3"
 DEFAULT_MODEL = "gemma3:12b"
-DEFAULT_THRESHOLD = 0.60
+DEFAULT_THRESHOLD = 0.55
 IDK = {
     "English": "I don't know, let me connect you to a person.",
     "Bangla": "আমি জানি না, আপনাকে একজন প্রতিনিধির সঙ্গে কথা বলিয়ে দিচ্ছি।",
@@ -61,9 +61,11 @@ def detect_language(question: str, client: Any, model: str) -> str:
                 "content": (
                     "Classify the text's primary language as exactly one word: English or Banglish. "
                     "Banglish is Bangla written with Latin letters, for example 'Amar account e "
-                    "taka ache?' or 'FDR korte minimum koto taka lage?'. Classify ordinary English "
-                    "sentences as English, even if they mention Bangladesh or banking. Output no "
-                    "explanation."
+                    "taka ache?', 'FDR korte minimum koto taka lage?', 'debit card er annual "
+                    "fee koto?', or 'cheque boi pete koto din lage?'. Classify ordinary English "
+                    "sentences as English, even if they mention Bangladesh or banking. If the "
+                    "sentence uses Bengali grammar or vocabulary written in Latin letters, it "
+                    "is Banglish. Output no explanation."
                 ),
             },
             {"role": "user", "content": question},
@@ -78,30 +80,133 @@ def detect_language(question: str, client: Any, model: str) -> str:
     raise ValueError(f"Language classifier returned an unexpected label: {answer!r}")
 
 
+def classify_message(question: str, client: Any, model: str) -> tuple[str, str]:
+    language = detect_language(question, client, model)
+    response = client.chat(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Classify the user's intent as exactly BANKING or CHAT. Intent is "
+                    "BANKING when the user asks for information, help, or an action "
+                    "involving a bank, "
+                    "account, card, transfer, loan, payment, or bank service. Use CHAT "
+                    "for greetings, social conversation, general non-banking questions, "
+                    "and other messages that do not request bank-specific help. If a "
+                    "message mixes a greeting with a banking request, classify it as "
+                    "BANKING. Output only one label, with no explanation."
+                ),
+            },
+            {"role": "user", "content": question},
+        ],
+        options={"temperature": 0},
+    )
+    answer = ollama_content(response)
+    match = re.search(r"\b(BANKING|CHAT)\b", answer, flags=re.IGNORECASE)
+    if not match:
+        raise ValueError(f"Message classifier returned an unexpected label: {answer!r}")
+    return language, match.group(1).upper()
+
+
 def detect_reply_language(answer: str, target_language: str, client: Any, model: str) -> str:
     if re.search(r"[\u0980-\u09FF]", answer):
         return "Bangla"
     text = re.sub(r"\b(?:BDT|USD|EUR|GBP|FDR|NID|ATM|OTP|TK|TAKA)\b", "", answer, flags=re.I)
     if not any(character.isalpha() for character in text):
         return target_language
-    return detect_language(answer, client, model)
+    response = client.chat(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Classify the language of this customer-service reply as exactly English "
+                    "or Banglish. Banglish is Bengali grammar and vocabulary written in Latin "
+                    "letters, even when it contains English banking terms such as 'interest "
+                    "rate', 'account', or 'BDT'. Examples: 'Proti bochor interest rate 12% "
+                    "hobe.' is Banglish; 'The interest rate is 12% per year.' is English. "
+                    "Classify by the sentence's language, not its topic or loanwords. Output "
+                    "only one label."
+                ),
+            },
+            {"role": "user", "content": answer},
+        ],
+        options={"temperature": 0},
+    )
+    label = ollama_content(response).strip().lower()
+    if "banglish" in label:
+        return "Banglish"
+    if "english" in label:
+        return "English"
+    raise ValueError(f"Reply language classifier returned an unexpected label: {label!r}")
 
 
-def answer_prompt(language: str, context: str, question: str) -> list[dict[str, str]]:
+def answer_prompt(
+    language: str,
+    context: str,
+    question: str,
+    previous_answer: str | None = None,
+) -> list[dict[str, str]]:
+    system_content = (
+        "Answer only using the provided bank FAQ CONTEXT. Do not use outside knowledge or "
+        "infer missing policies. If the context does not answer the question, output exactly "
+        f"{NO_ANSWER}. Otherwise, give a short answer in {language}. For Bangla, use Bangla "
+        "script. For Banglish, write Bangla words using Latin letters; do not use Bangla "
+        "script or answer in English. For English, write standard English. Do not add a "
+        "greeting or unsupported details."
+    )
+    user_content = f"CONTEXT:\n{context}\n\nQUESTION:\n{question}"
+    if previous_answer is not None:
+        system_content += (
+            f" Rewrite the provided answer in {language}. This is a translation task: do not "
+            "reconsider whether the FAQ answers the question, do not refuse, and do not output "
+            f"{NO_ANSWER}. Preserve every supported fact, number, name, and condition."
+        )
+        user_content += f"\n\nANSWER TO TRANSLATE:\n{previous_answer}"
+    return [
+        {
+            "role": "system",
+            "content": system_content,
+        },
+        {"role": "user", "content": user_content},
+    ]
+
+
+def conversation_prompt(language: str, message: str) -> list[dict[str, str]]:
     return [
         {
             "role": "system",
             "content": (
-                "Answer only using the provided bank FAQ CONTEXT. Do not use outside knowledge or "
-                "infer missing policies. If the context does not answer the question, output exactly "
-                f"{NO_ANSWER}. Otherwise, give a short answer in {language}. For Bangla, use Bangla "
-                "script. For Banglish, write Bangla words using Latin letters; do not use Bangla "
-                "script or answer in English. For English, write standard English. Do not add a "
-                "greeting or unsupported details."
+                "You are a friendly, helpful conversational assistant. Reply naturally "
+                f"and concisely in {language}, matching the user's tone. Handle ordinary "
+                "conversation and general questions normally. Do not invent bank policies "
+                "or account-specific facts; bank-related requests are answered from the "
+                "bank FAQ."
             ),
         },
-        {"role": "user", "content": f"CONTEXT:\n{context}\n\nQUESTION:\n{question}"},
+        {"role": "user", "content": message},
     ]
+
+
+def enforce_output_language(
+    answer: str,
+    language: str,
+    client: Any,
+    model: str,
+    retry: Callable[[str], str],
+) -> str:
+    if answer == NO_ANSWER or not answer.strip():
+        return IDK[language]
+    for _ in range(3):
+        if detect_reply_language(answer, language, client, model) == language:
+            return answer
+        answer = retry(answer)
+        if answer == NO_ANSWER or not answer.strip():
+            return IDK[language]
+    if detect_reply_language(answer, language, client, model) == language:
+        return answer
+    return IDK[language]
 
 
 class BankAssistant:
@@ -226,24 +331,68 @@ class BankAssistant:
 
     def answer_with_context(self, question: str, language: str, retrieved: list[dict[str, Any]]) -> str:
         context = "\n\n".join(item["text"] for item in retrieved)
-        response = self.client.chat(
-            model=self.model,
-            messages=answer_prompt(language, context, question),
-            options={"temperature": 0},
+
+        def generate(previous_answer: str | None = None) -> str:
+            response = self.client.chat(
+                model=self.model,
+                messages=answer_prompt(language, context, question, previous_answer),
+                options={"temperature": 0},
+            )
+            return ollama_content(response)
+
+        answer = generate()
+        return enforce_output_language(
+            answer,
+            language,
+            self.client,
+            self.model,
+            lambda previous_answer: generate(previous_answer),
         )
-        return ollama_content(response)
+
+    def respond_to_conversation(self, message: str, language: str) -> str:
+        def generate(previous_answer: str | None = None) -> str:
+            messages = conversation_prompt(language, message)
+            if previous_answer is not None:
+                messages[0]["content"] = (
+                    f"Translate the provided reply into {language}. Preserve its meaning "
+                    "and do not add unsupported banking or account-specific facts."
+                )
+                messages[1]["content"] += f"\n\nReply to translate:\n{previous_answer}"
+            response = self.client.chat(
+                model=self.model,
+                messages=messages,
+                options={"temperature": 0.7},
+            )
+            return ollama_content(response)
+
+        answer = generate()
+        return enforce_output_language(
+            answer,
+            language,
+            self.client,
+            self.model,
+            lambda previous_answer: generate(previous_answer),
+        )
 
     def ask(self, question: str) -> dict[str, Any]:
         started = time.perf_counter()
-        language = detect_language(question, self.client, self.model)
+        language, intent = classify_message(question, self.client, self.model)
+        if intent == "CHAT":
+            answer = self.respond_to_conversation(question, language)
+            return {
+                "question": question,
+                "answer": answer,
+                "language": language,
+                "retrieved_ids": [],
+                "top_score": 0.0,
+                "latency_seconds": time.perf_counter() - started,
+            }
         retrieved = self.retrieve(question, language)
         top_score = retrieved[0]["score"] if retrieved else 0.0
         if not retrieved or top_score < self.threshold:
             answer = IDK[language]
         else:
             answer = self.answer_with_context(question, language, retrieved)
-            if answer == NO_ANSWER:
-                answer = IDK[language]
         return {
             "question": question,
             "answer": answer,

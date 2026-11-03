@@ -1,0 +1,4 @@
+# Install a CUDA-enabled PyTorch wheel separately; see README.md.
+transformers>=5,<6
+peft>=0.14,<1
+bitsandbytes>=0.46

@@ -9,3 +9,4 @@ secrets.*
 __pycache__/
 *.py[cod]
 cache/
+output/

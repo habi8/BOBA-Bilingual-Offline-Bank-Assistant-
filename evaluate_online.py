@@ -23,6 +23,7 @@ from assistant import (
     answer_prompt,
     detect_language,
     detect_reply_language,
+    enforce_output_language,
     is_idk,
 )
 from evaluate import calculate_metrics, judge_correctness, load_inputs
@@ -108,13 +109,30 @@ def evaluate_online(args: argparse.Namespace) -> None:
         if not retrieved or top_score < args.threshold:
             answer = IDK[language]
         else:
+            messages = answer_prompt(
+                language, "\n\n".join(x["text"] for x in retrieved), item.question
+            )
             answer = call_gemini(
                 key,
                 args.online_model,
-                answer_prompt(language, "\n\n".join(x["text"] for x in retrieved), item.question),
+                messages,
             )
-            if answer == "NO_ANSWER":
-                answer = IDK[language]
+            answer = enforce_output_language(
+                answer,
+                language,
+                assistant.client,
+                assistant.model,
+                lambda previous_answer: call_gemini(
+                    key,
+                    args.online_model,
+                    answer_prompt(
+                        language,
+                        "\n\n".join(x["text"] for x in retrieved),
+                        item.question,
+                        previous_answer,
+                    ),
+                ),
+            )
         latency = time.perf_counter() - started
         denied = is_idk(answer, item.language)
         reply_language = detect_reply_language(answer, item.language, assistant.client, assistant.model)
