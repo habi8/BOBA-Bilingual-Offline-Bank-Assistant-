@@ -1,0 +1,77 @@
+# ROLE
+You are a senior ML engineer. Build, run, and evaluate the project below end to end. Write working code, run it, fix errors yourself. Ask me only if a file is missing or its format is truly unclear.
+
+# TASK: Bilingual offline bank assistant
+
+A bank wants a customer chat assistant. Customers write in English, Bangla (বাংলা script), or Banglish (Bangla in English letters). Bank forbids sending customer data to outside AI services, so the assistant must run locally on a small open model.
+
+## Requirements
+1. Answer using ONLY the bank FAQ. No outside knowledge.
+2. Reply in the SAME language as the customer: English, Bangla, or Banglish.
+3. Run on a small open model (Qwen / Llama / Gemma / Phi) locally. No customer data sent to external APIs in the assistant itself.
+4. If the answer is not in the FAQ, reply exactly: "I don't know, let me connect you to a person." (in the customer's language: Bangla and Banglish versions too).
+5. Evaluate on the 40 test questions (mixed languages; some are deliberately NOT in the FAQ). Report:
+   - accuracy on answerable questions
+   - IDK recall (correctly said "I don't know" on unanswerable ones)
+   - false-IDK rate (said IDK when answer existed)
+   - language-match rate (reply language == question language)
+   - latency: median and p95 seconds per question
+6. Run the same 40 questions on one online AI model (same retrieval context + same prompt) and compare in one table: accuracy, IDK recall, false-IDK, language match, latency.
+7. OPTIONAL: QLoRA fine-tune the small model on banking terms + Banglish, then re-run the 40 questions and show before/after.
+
+# HARDWARE / ENV
+- NVIDIA RTX 3060 12GB, Windows likely (keep commands cross-platform; use `pathlib`).
+- Python 3.10+, use a venv in `./.venv`.
+- Keep VRAM under 12GB.
+
+# FILES NEEDED (look in project root first)
+- `bank-faq.*` — bank FAQ (txt/md/csv/json/pdf). Inspect format, then write a parser that makes one chunk per Q&A pair.
+- `test-questions.*` — 40 test questions (csv/json/xlsx). Inspect format.
+- If the test file has no labels, create `labels.csv` with columns: `id, question, language, answerable(yes/no), expected_faq_id`. Pre-fill your best guess, tell me to review it, and DO NOT report final metrics until I confirm labels.
+- Online comparison needs an API key in `.env` (e.g. `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY`). If none exists, skip that step, finish everything else, and tell me exactly what to add.
+
+# MODELS (idempotent: check before download)
+- LLM main: `qwen2.5:7b-instruct` via Ollama.
+- LLM alt: `gemma3:12b` via Ollama (compare against main on the 40 Qs, keep the winner).
+- Embeddings: `BAAI/bge-m3` via sentence-transformers.
+
+Write `setup_models.py` that does this and prints a status table (model, found/downloaded, size):
+1. Check Ollama installed: run `ollama --version`. If missing, STOP and tell me to install from ollama.com (do not try to install silently).
+2. Check Ollama server running (`ollama list`); if not, start `ollama serve` in background.
+3. For each LLM: check `ollama list` output. Only run `ollama pull <name>` if absent.
+4. For bge-m3: check HF cache with `huggingface_hub.try_to_load_from_cache` / `snapshot_download(local_files_only=True)` in try/except. Download only if not cached.
+5. Check GPU with `nvidia-smi`; print free VRAM. Warn if under 8GB free.
+
+# WORKFLOW
+1. **Setup:** create venv, `pip install ollama sentence-transformers faiss-cpu pandas python-dotenv tqdm`, run `setup_models.py`.
+2. **Ingest:** parse FAQ → chunks with ids → embed with bge-m3 (normalized) → FAISS `IndexFlatIP`. Cache index to disk; rebuild only if FAQ file changed (hash check).
+3. **Pipeline (`assistant.py`), per question:**
+   a. Detect language: Bangla Unicode range `\u0980-\u09FF` → Bangla; else LLM one-word classify English vs Banglish (temperature 0).
+   b. Retrieve top-3 chunks. If Banglish retrieval is weak, add optional step: LLM rewrites question to English before embedding (make it a flag, test on/off).
+   c. If top score < threshold → return fixed IDK string in detected language, skip LLM.
+   d. Else call LLM with strict system prompt: answer only from CONTEXT, reply in detected language, short, else output exactly `NO_ANSWER`. Temperature 0.
+   e. `NO_ANSWER` → fixed IDK string.
+   f. Return answer, detected language, retrieved ids, top score, latency.
+4. **Tune:** sweep threshold (e.g. 0.30–0.65) on the 40 Qs, plot/print IDK recall vs false-IDK, pick best. Mention the risk of overfitting threshold to 40 questions.
+5. **Evaluate (`evaluate.py`):** run all 40, save `results_local.csv` with per-question output. Judge correctness by comparing with labeled expected FAQ answer (use expected_faq_id match + LLM-as-judge or manual flag column; state which method you used). Compute metrics above.
+6. **Compare (`evaluate_online.py`):** same 40 Qs, same retrieved context, same prompt, online model. Save `results_online.csv`. Build `comparison.md` table.
+7. **Model bake-off:** run main vs alt local model, keep winner.
+8. **Optional fine-tune:** only after steps 1–7 work. Use Unsloth QLoRA on Qwen2.5-7B (4-bit). Training data = synthetic Q&A from FAQ: English, Bangla, Banglish paraphrases, plus ~20% unanswerable questions mapped to the IDK reply. Do NOT include the 40 test questions in training. Export to GGUF → load in Ollama → re-run eval → `before_after.md`.
+
+# OUTPUT / DELIVERABLES
+```
+project/
+  setup_models.py  assistant.py  evaluate.py  evaluate_online.py
+  finetune.py (optional)  requirements.txt  README.md
+  labels.csv  results_local.csv  results_online.csv
+  comparison.md  before_after.md (if fine-tuned)
+```
+- README: how to run, in order, in under 10 commands.
+- Final report: one results table (local vs online vs fine-tuned), 5 failure examples with a short reason each, and honest limitations.
+
+# RULES
+- Do not invent FAQ content. Do not hardcode answers to test questions.
+- Do not tune on test data beyond the threshold sweep, and say so in the report.
+- Never print or commit API keys.
+- Log every step; if something fails, show the error, fix it, retry.
+- Before long runs (download, training), tell me size/time estimate.

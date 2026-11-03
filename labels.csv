@@ -1,0 +1,41 @@
+id,question,language,answerable,expected_faq_id
+1,Personal loan er interest rate koto?,Banglish,yes,19
+2,When will my BEFTN transfer reach the other bank?,English,yes,8
+3,"Amar account theke ekta transaction ami korini, kothay janabo?",Banglish,yes,24
+4,What happens if I break my FDR early?,English,yes,17
+5,What is the late payment fee on a credit card?,English,yes,23
+6,ক্রেডিট কার্ডের বিল কবে দিতে হয়?,Bangla,yes,22
+7,Ek din e koto taka transfer kora jay?,Banglish,yes,7
+8,How can I get a bank statement for the last six months?,English,yes,11
+9,এসএমএস অ্যালার্টের জন্য কত চার্জ?,Bangla,yes,25
+10,চেক বই পেতে কত দিন লাগে?,Bangla,yes,27
+11,Will you waive the interest on my loan because my business made a loss?,English,no,
+12,FDR korte minimum koto taka lage?,Banglish,yes,16
+13,আমার বন্ধুর অ্যাকাউন্টে কত টাকা আছে বলুন তো?,Bangla,no,
+14,এটিএম থেকে দিনে সর্বোচ্চ কত টাকা তোলা যায়?,Bangla,yes,9
+15,Can I open a joint account with my spouse?,English,yes,14
+16,What documents do I need to open a savings account?,English,yes,1
+17,Cheque er payment ta stop korbo kibhabe?,Banglish,yes,28
+18,আজকের স্বর্ণের দাম কত?,Bangla,no,
+19,আপনাদের সিঙ্গাপুরে কোনো শাখা আছে কি?,Bangla,no,
+20,সেভিংস অ্যাকাউন্টে সর্বনিম্ন কত টাকা রাখতে হবে?,Bangla,yes,2
+21,Do you offer cryptocurrency trading accounts?,English,no,
+22,পার্সোনাল লোনের জন্য কী যোগ্যতা লাগে?,Bangla,yes,18
+23,Debit card er annual fee koto?,Banglish,yes,3
+24,"Card er PIN bhule gechi, reset korbo kibhabe?",Banglish,yes,5
+25,Branch gulo kon din kon shomoy khola thake?,Banglish,yes,10
+26,নমিনি পরিবর্তন করতে কী লাগবে?,Bangla,yes,15
+27,"আমার কার্ড হারিয়ে গেছে, এখন কী করব?",Bangla,yes,4
+28,How do I register for the NB Go mobile app?,English,yes,6
+29,Is there a fee to receive remittance from abroad?,English,yes,26
+30,How much of the property value can I borrow for a home loan?,English,yes,20
+31,Credit card nite hole income koto hote hobe?,Banglish,yes,21
+32,What is today's dollar to taka exchange rate?,English,no,
+33,Apnader bank er share kinle labh hobe?,Banglish,no,
+34,"আমার মোবাইল নম্বর বদলাতে চাই, কীভাবে করব?",Bangla,yes,12
+35,Account dormant hoye gele ki korte hobe?,Banglish,yes,13
+36,Can you give me the phone number of the branch manager in Sylhet?,English,no,
+37,"Amar boyosh 17, ami ki student loan pabo?",Banglish,no,
+38,KYC update koto bochor por por korte hoy?,Banglish,yes,30
+39,আমার ব্যবসার জন্য ভিসা সহায়তা পাওয়া যাবে?,Bangla,no,
+40,How do I close my account?,English,yes,29

@@ -5,3 +5,7 @@
 *.key
 *.p12
 secrets.*
+.venv/
+__pycache__/
+*.py[cod]
+cache/
