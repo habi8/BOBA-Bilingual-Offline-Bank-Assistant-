@@ -148,13 +148,21 @@ def answer_prompt(
     question: str,
     previous_answer: str | None = None,
 ) -> list[dict[str, str]]:
+    language_rules = {
+        "English": "Write standard English.",
+        "Bangla": "Write Bengali using Bengali script.",
+        "Banglish": (
+            "Write Bengali words and grammar using Latin letters only. Never use Bengali "
+            "script, and do not answer in ordinary English. Keep standard banking terms "
+            "where appropriate. For example, say 'Apnar debit card er annual fee...' "
+            "rather than translating the whole answer into Bengali script or English."
+        ),
+    }
     system_content = (
         "Answer only using the provided bank FAQ CONTEXT. Do not use outside knowledge or "
         "infer missing policies. If the context does not answer the question, output exactly "
-        f"{NO_ANSWER}. Otherwise, give a short answer in {language}. For Bangla, use Bangla "
-        "script. For Banglish, write Bangla words using Latin letters; do not use Bangla "
-        "script or answer in English. For English, write standard English. Do not add a "
-        "greeting or unsupported details."
+        f"{NO_ANSWER}. Otherwise, give a short answer in {language}. "
+        f"{language_rules[language]} Do not add a greeting or unsupported details."
     )
     user_content = f"CONTEXT:\n{context}\n\nQUESTION:\n{question}"
     if previous_answer is not None:
@@ -174,12 +182,21 @@ def answer_prompt(
 
 
 def conversation_prompt(language: str, message: str) -> list[dict[str, str]]:
+    language_rules = {
+        "English": "Use standard English.",
+        "Bangla": "Use Bengali script.",
+        "Banglish": (
+            "Use Bengali words and grammar written with Latin letters only; do not use "
+            "Bengali script or reply in ordinary English."
+        ),
+    }
     return [
         {
             "role": "system",
             "content": (
                 "You are a friendly, helpful conversational assistant. Reply naturally "
-                f"and concisely in {language}, matching the user's tone. Handle ordinary "
+                f"and concisely in {language}, matching the user's tone. "
+                f"{language_rules[language]} Handle ordinary "
                 "conversation and general questions normally. Do not invent bank policies "
                 "or account-specific facts; bank-related requests are answered from the "
                 "bank FAQ."
