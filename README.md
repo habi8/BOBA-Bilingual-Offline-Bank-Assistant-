@@ -12,6 +12,10 @@ Banking answers must be grounded in the FAQ. After retrieval, the assistant chec
 Run these commands in PowerShell from the project directory:
 
 ```powershell
+# Uses the default Hugging Face base model and output\gemma3-12b-bank-lora adapter.
+.\.venv\Scripts\python.exe .\ask_finetuned.py
+
+# Or point to a base checkpoint already downloaded locally:
 .\.venv\Scripts\python.exe .\ask_finetuned.py --base-model "E:\Models\gemma-3-12b-it-bnb-4bit"
 ```
 
@@ -24,10 +28,10 @@ The command above assumes:
 - CUDA-enabled PyTorch, Transformers, PEFT, and bitsandbytes are installed.
 - A CUDA-capable GPU with sufficient free VRAM is available (training/evaluation used an RTX 3060).
 
-If the base checkpoint is available from Hugging Face, `--base-model "E:\Models\gemma-3-12b-it-bnb-4bit"` can be omitted. To ask one question and exit:
+The default base model is `unsloth/gemma-3-12b-it-bnb-4bit`; omit `--base-model` to load it from Hugging Face. To ask one question and exit:
 
 ```powershell
-.\.venv\Scripts\python.exe .\ask_finetuned.py "What documents do I need to open a savings account?" --base-model "E:\Models\gemma-3-12b-it-bnb-4bit"
+.\.venv\Scripts\python.exe .\ask_finetuned.py "What documents do I need to open a savings account?"
 ```
 
 `assistant.py` does **not** load the adapter. Run `ask_finetuned.py` to use the fine-tuned model.

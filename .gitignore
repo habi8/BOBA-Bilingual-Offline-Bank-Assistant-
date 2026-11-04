@@ -10,3 +10,17 @@ __pycache__/
 *.py[cod]
 cache/
 output/
+/loom-script.md
+
+# Test and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Operating system and editor temporary files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*.log
