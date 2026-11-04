@@ -29,6 +29,11 @@ IDK = {
     "Bangla": "আমি জানি না, আপনাকে একজন প্রতিনিধির সঙ্গে কথা বলিয়ে দিচ্ছি।",
     "Banglish": "Ami jani na, apnake ekjon protinidhir sathe kotha boliye dichhi.",
 }
+OUT_OF_SCOPE = {
+    "English": "I can only help with questions covered by the bank FAQ.",
+    "Bangla": "আমি শুধু ব্যাংকের FAQ-এ থাকা প্রশ্নগুলোর ব্যাপারে সাহায্য করতে পারি।",
+    "Banglish": "Ami shudhu bank FAQ-te thaka proshno niye shahajjo korte pari.",
+}
 NO_ANSWER = "NO_ANSWER"
 
 
@@ -160,7 +165,10 @@ def answer_prompt(
     }
     system_content = (
         "Answer only using the provided bank FAQ CONTEXT. Do not use outside knowledge or "
-        "infer missing policies. If the context does not answer the question, output exactly "
+        "infer missing policies or apply one product's terms to a different product. "
+        "The context must directly answer the exact question, including its product and "
+        "whether it asks for general policy or a specific customer's private information. "
+        "If it does not, output exactly "
         f"{NO_ANSWER}. Otherwise, give a short answer in {language}. "
         f"{language_rules[language]} Do not add a greeting or unsupported details."
     )
@@ -178,31 +186,6 @@ def answer_prompt(
             "content": system_content,
         },
         {"role": "user", "content": user_content},
-    ]
-
-
-def conversation_prompt(language: str, message: str) -> list[dict[str, str]]:
-    language_rules = {
-        "English": "Use standard English.",
-        "Bangla": "Use Bengali script.",
-        "Banglish": (
-            "Use Bengali words and grammar written with Latin letters only; do not use "
-            "Bengali script or reply in ordinary English."
-        ),
-    }
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You are a friendly, helpful conversational assistant. Reply naturally "
-                f"and concisely in {language}, matching the user's tone. "
-                f"{language_rules[language]} Handle ordinary "
-                "conversation and general questions normally. Do not invent bank policies "
-                "or account-specific facts; bank-related requests are answered from the "
-                "bank FAQ."
-            ),
-        },
-        {"role": "user", "content": message},
     ]
 
 
@@ -366,36 +349,40 @@ class BankAssistant:
             lambda previous_answer: generate(previous_answer),
         )
 
-    def respond_to_conversation(self, message: str, language: str) -> str:
-        def generate(previous_answer: str | None = None) -> str:
-            messages = conversation_prompt(language, message)
-            if previous_answer is not None:
-                messages[0]["content"] = (
-                    f"Translate the provided reply into {language}. Preserve its meaning "
-                    "and do not add unsupported banking or account-specific facts."
-                )
-                messages[1]["content"] += f"\n\nReply to translate:\n{previous_answer}"
-            response = self.client.chat(
-                model=self.model,
-                messages=messages,
-                options={"temperature": 0.7},
-            )
-            return ollama_content(response)
-
-        answer = generate()
-        return enforce_output_language(
-            answer,
-            language,
-            self.client,
-            self.model,
-            lambda previous_answer: generate(previous_answer),
+    def faq_context_answers(self, question: str, retrieved: list[dict[str, Any]]) -> bool:
+        context = "\n\n".join(item["text"] for item in retrieved)
+        response = self.client.chat(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Decide whether the FAQ context directly and explicitly answers the "
+                        "user's exact question. A related topic is not enough: do not transfer "
+                        "rules between different products (for example, personal loans and "
+                        "student loans), and do not treat general policy as an answer to a "
+                        "specific customer's private account information. Output exactly "
+                        "ANSWERABLE or UNANSWERABLE."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"FAQ CONTEXT:\n{context}\n\nQUESTION:\n{question}",
+                },
+            ],
+            options={"temperature": 0},
         )
+        answer = ollama_content(response)
+        match = re.fullmatch(r"(ANSWERABLE|UNANSWERABLE)", answer, flags=re.IGNORECASE)
+        if not match:
+            raise ValueError(f"FAQ relevance classifier returned an unexpected label: {answer!r}")
+        return match.group(1).upper() == "ANSWERABLE"
 
     def ask(self, question: str) -> dict[str, Any]:
         started = time.perf_counter()
         language, intent = classify_message(question, self.client, self.model)
         if intent == "CHAT":
-            answer = self.respond_to_conversation(question, language)
+            answer = OUT_OF_SCOPE[language]
             return {
                 "question": question,
                 "answer": answer,
@@ -407,6 +394,8 @@ class BankAssistant:
         retrieved = self.retrieve(question, language)
         top_score = retrieved[0]["score"] if retrieved else 0.0
         if not retrieved or top_score < self.threshold:
+            answer = IDK[language]
+        elif not self.faq_context_answers(question, retrieved):
             answer = IDK[language]
         else:
             answer = self.answer_with_context(question, language, retrieved)

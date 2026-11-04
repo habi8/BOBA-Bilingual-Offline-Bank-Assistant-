@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import random
 import sys
 import threading
 from pathlib import Path
@@ -14,33 +13,6 @@ from evaluate_finetuned import (
     DEFAULT_BASE_MODEL,
     TransformersChatClient,
 )
-
-
-def generate_welcome(client: TransformersChatClient, model: str) -> str:
-    styles = (
-        "warm and welcoming",
-        "friendly and relaxed",
-        "polite and professional",
-        "cheerful but concise",
-        "natural and conversational",
-    )
-    response = client.chat(
-        model=model,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Write one brief, fresh opening welcome for a bilingual bank FAQ "
-                    "assistant. Use English. Greet the user naturally, invite them to ask "
-                    "how you can help, and do not invent bank policies. Avoid a stock "
-                    "'Hi! Hello!' opening. Vary the wording and sentence structure."
-                ),
-            },
-            {"role": "user", "content": f"Use a {random.choice(styles)} tone."},
-        ],
-        options={"temperature": 0.85, "num_predict": 48, "top_p": 0.9},
-    )
-    return response["message"]["content"].strip()
 
 
 def ask_with_thinking(assistant: BankAssistant, question: str) -> str:
@@ -98,7 +70,7 @@ def main() -> int:
             return 0
 
         print("Fine-tuned FAQ assistant ready. Type 'exit' or 'quit' to stop.")
-        print(f"Assistant: {generate_welcome(client, args.base_model)}")
+        print("Assistant: Hello! How can I help you today?")
         while True:
             try:
                 question = input("\nYou: ").strip()
